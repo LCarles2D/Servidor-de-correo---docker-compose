@@ -4,7 +4,7 @@ Este proyecto implementa una infraestructura completa de correo electrónico con
 
 ---
 
-## 📌 Arquitectura del Sistema
+## Arquitectura del Sistema
 
 El siguiente diagrama muestra el flujo de comunicación entre el cliente de correo (MUA), los servidores de correo y la base de datos de usuarios LDAP:
 
@@ -24,7 +24,7 @@ flowchart TD
 
 ---
 
-## 🛠️ Detalle Técnico de los Componentes
+## Detalle Técnico de los Componentes
 
 ### 1. Directorio Activo (OpenLDAP) — `./ldap`
 
@@ -130,7 +130,7 @@ ldapadd -x -H ldap://localhost:389 -D "cn=admin,dc=frijoli,dc=com" -w admin123 -
 
 ---
 
-## 🧪 Pruebas de Funcionamiento
+## Pruebas de Funcionamiento
 
 ### 1. Probar entrega SMTP (Puerto 25)
 
@@ -181,7 +181,7 @@ _(Ingresa los comandos IMAP)_
 
 ---
 
-## 📂 Estructura de Archivos del Proyecto
+## Estructura de Archivos del Proyecto
 
 ```text
 ├── docker-compose.yaml        # Orquestación de contenedores y mapeo de puertos/volúmenes.
