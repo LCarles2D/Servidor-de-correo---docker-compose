@@ -1,63 +1,59 @@
-# Servidor de Correo Integrado (SMTP + IMAP + OpenLDAP)
+# Integrated Mail Server Stack (SMTP + IMAP + OpenLDAP)
 
-Este proyecto implementa una infraestructura completa de correo electrónico contenerizada utilizando **Postfix** (SMTP), **Dovecot** (IMAP/LMTP) y **OpenLDAP** (Servicio de Directorio). Está diseñado para resolver la autenticación centralizada de usuarios de correo y la entrega dinámica de buzones virtuales de forma eficiente y persistente.
+This repository implements a fully containerized mail server infrastructure using Postfix (SMTP), Dovecot (IMAP/LMTP), and OpenLDAP (Directory Service). It is designed to provide centralized user authentication and dynamic virtual mailbox delivery.
 
 ---
 
-## Arquitectura del Sistema
+## Architecture Overview
 
-El siguiente diagrama muestra el flujo de comunicación entre el cliente de correo (MUA), los servidores de correo y la base de datos de usuarios LDAP:
+The following diagram illustrates the email flow and integration between the mail user agent (MUA), the mail servers, and the LDAP directory service:
 
 ```mermaid
 flowchart TD
-    MUA["Cliente de Correo / MUA"] -->|"1. Envia Correo (Puerto 25)"| SMTP["Postfix / SMTP"]
-    MUA -->|"Lectura IMAP (Puerto 143)"| IMAP["Dovecot / IMAP"]
-
-    SMTP -->|"2. Consulta Mapeo de Buzón"| LDAP[("OpenLDAP (Puerto 389)")]
-    SMTP -->|"3. Entrega via LMTP (Puerto 24)"| LMTP["Dovecot / LMTP"]
-
-    IMAP -->|"Consulta Autenticación"| LDAP
-
-    LMTP -->|"4. Escribe Correo"| Maildir["Almacenamiento Maildir /home/vmail"]
-    IMAP -->|"Lee Buzón"| Maildir
+    MUA["Mail User Agent (MUA)"] -->|"1. Sends Email (Port 25)"| SMTP["Postfix (SMTP)"]
+    MUA -->|"Reads IMAP (Port 143)"| IMAP["Dovecot (IMAP)"]
+    
+    SMTP -->|"2. Queries Mailbox Mapping"| LDAP[("OpenLDAP (Port 389)")]
+    SMTP -->|"3. Delivers via LMTP (Port 24)"| LMTP["Dovecot (LMTP)"]
+    
+    IMAP -->|"Queries Authentication"| LDAP
+    
+    LMTP -->|"4. Writes Email"| Maildir["Maildir Storage (/home/vmail)"]
+    IMAP -->|"Reads Mailbox"| Maildir
 ```
 
 ---
 
-## Detalle Técnico de los Componentes
+## Component Specifications
 
-### 1. Directorio Activo (OpenLDAP) — `./ldap`
+### 1. Directory Server (OpenLDAP) — `./ldap`
+- **Base Image:** `debian:12-slim` containing `slapd` and `ldap-utils`.
+- **Schema Injection:** On initial startup, the `entrypoint.sh` script dynamically compiles and registers the `misc.schema` and `courier.schema` files (required for the `CourierMailAccount` object class).
+- **Persistence:** Persists LDAP data and system configurations using host-mounted volumes (`./ldap/data` and `./ldap/config`). Destructive initialization is automatically skipped if an existing database is detected.
+- **Default Domain:** Configured to `frijoli.com` with the default admin password `admin123`.
 
-- **Imagen base:** `debian:12-slim` con `slapd` y `ldap-utils`.
-- **Inyección de Esquemas:** Al iniciar por primera vez, el script `entrypoint.sh` convierte e instala dinámicamente los esquemas `misc.schema` y `courier.schema` (necesario para la clase de objeto `CourierMailAccount`).
-- **Persistencia:** Almacena los datos y la configuración en directorios mapeados en el host (`./ldap/data` y `./ldap/config`). Evita reinicializaciones destructivas si detecta la base de datos existente.
-- **Dominio por Defecto:** `frijoli.com` con contraseña de administrador `admin123`.
+### 2. Mail Transfer Agent (Postfix SMTP) — `./smtp`
+- **Base Image:** `debian:12-slim` with `postfix` and `postfix-ldap`.
+- **Virtual Domains:** Resolved dynamically from `/etc/postfix/vdomains.txt` (defines virtual domains like `frijoli.com`, `diana.frijoli.com`).
+- **LDAP Lookups:** Employs `ldapmaps.cf` to map the target recipient email (`mail` attribute) to its corresponding mailbox subdirectory (`mailbox` attribute).
+- **Chroot Disabled:** All daemons in `master.cf` run with `chroot = n`. This bypasses Postfix's default container jail, allowing the system to communicate with the LDAP container and external networks without connectivity issues.
+- **LMTP Delivery:** Leverages the `virtual_transport = lmtp:inet:imap:24` configuration to forward incoming emails directly to Dovecot's LMTP listener.
 
-### 2. Agente de Transferencia de Correo (Postfix SMTP) — `./smtp`
-
-- **Imagen base:** `debian:12-slim` con `postfix` y `postfix-ldap`.
-- **Dominios Virtuales:** Configurados dinámicamente en `/etc/postfix/vdomains.txt` (`frijoli.com`, `diana.frijoli.com`).
-- **Consultas LDAP:** Emplea `ldapmaps.cf` para resolver qué buzón (`mailbox`) pertenece a cada dirección de correo (`mail`).
-- **Bypass de Chroot (Crucial):** Todos los demonios en `master.cf` están configurados con `chroot = n`. Esto previene fallos de comunicación con el DNS y LDAP causados por el aislamiento típico de Postfix.
-- **Entrega LMTP:** El parámetro `virtual_transport = lmtp:inet:imap:24` redirige la entrega final al puerto 24 del contenedor `imap` usando el protocolo LMTP.
-
-### 3. Agente de Entrega e IMAP (Dovecot) — `./imap`
-
-- **Imagen base:** `debian:12-slim` con `dovecot-core`, `dovecot-imapd`, `dovecot-lmtpd` y `dovecot-ldap`.
-- **Seguridad de Archivos:** Crea el usuario/grupo virtual `vmail` con UID/GID `1005`.
-- **Autenticación (Passdb/Userdb):** Configurado a través de `dovecot-ldap.conf.ext`. Utiliza filtros flexibles para permitir el acceso tanto con el correo electrónico completo (`mail`) como con el nombre de usuario (`uid`):
+### 3. Mail Delivery and IMAP Server (Dovecot) — `./imap`
+- **Base Image:** `debian:12-slim` with `dovecot-core`, `dovecot-imapd`, `dovecot-lmtpd`, and `dovecot-ldap`.
+- **Permission Management:** Configured with a dedicated `vmail` system user/group (UID/GID `1005`) which owns the mail storage.
+- **Authentication (Passdb/Userdb):** Configured in `/etc/dovecot/dovecot-ldap.conf.ext`. Utilizes LDAP filters to support credentials lookups using either the full email address (`mail`) or username (`uid`):
   - `pass_filter` / `user_filter`: `(&(objectClass=CourierMailAccount)(|(mail=%{user})(uid=%{user})))`
-- **Buzón Dinámico:** Mapea el atributo `mailbox` de LDAP al directorio del buzón final del usuario mediante la plantilla:
+- **Dynamic Storage Path:** Mails are stored dynamically based on the LDAP `mailbox` attribute value by mapping it to the Dovecot Maildir location:
   `user_attrs = homeDirectory=home, uidNumber=uid, gidNumber=gid, mailbox=mail=maildir:/home/vmail/%$`
-- **LMTP Server:** Escucha en el puerto `24` dentro del contenedor para recibir correos desde Postfix.
+- **LMTP Service:** Listens on port `24` inside the container network to accept incoming deliveries from Postfix.
 
 ---
 
-## Guía de Despliegue y Uso
+## Deployment and Setup
 
-### Paso 1: Preparar permisos en el Host
-
-Dado que los contenedores utilizan el UID/GID `1005` para escribir en el correo virtual compartiendo el volumen `/home/vmail`, debes asegurarte de que dicho directorio exista en el host y tenga los permisos correspondientes:
+### Step 1: Configure Host Permissions
+Since the containers use UID/GID `1005` to write data to the shared volume `/home/vmail`, you must ensure the directory exists on the host and has the proper ownership:
 
 ```bash
 sudo mkdir -p /home/vmail
@@ -65,9 +61,8 @@ sudo chown -R 1005:1005 /home/vmail
 sudo chmod -R 770 /home/vmail
 ```
 
-### Paso 2: Construir las Imágenes Locales
-
-Si las imágenes del registro de Docker (`lcarles2d/*`) no están disponibles o deseas probar cambios locales, puedes construirlas tú mismo ejecutando:
+### Step 2: Build the Container Images Locally
+If the remote Docker Registry images (`lcarles2d/*`) are unavailable, build them locally using:
 
 ```bash
 docker build -t lcarles2d/openldap:pdc ./ldap
@@ -75,15 +70,14 @@ docker build -t lcarles2d/postfix:pdc ./smtp
 docker build -t lcarles2d/dovecot:pdc ./imap
 ```
 
-### Paso 3: Levantar el Stack de Servicios
-
-Utiliza Docker Compose para iniciar la infraestructura en segundo plano:
+### Step 3: Run the Stack
+Start the services in the background using Docker Compose:
 
 ```bash
 docker-compose up -d
 ```
 
-Verifica que todos los contenedores estén corriendo de forma estable:
+Verify the status of the containers:
 
 ```bash
 docker-compose ps
@@ -91,13 +85,12 @@ docker-compose ps
 
 ---
 
-## Gestión de Usuarios en LDAP
+## LDAP User Management
 
-Para que los servidores SMTP e IMAP reconozcan a los usuarios, estos deben estar registrados en el OpenLDAP bajo la unidad organizativa `ou=usuarios,dc=frijoli,dc=com` y poseer los atributos de `CourierMailAccount`.
+To allow SMTP and IMAP servers to process user mailboxes, users must be registered in the OpenLDAP directory under `ou=usuarios,dc=frijoli,dc=com` with the `CourierMailAccount` object class.
 
-### Ejemplo de Archivo LDIF (`usuario.ldif`):
-
-Crea un archivo temporal con la estructura del usuario:
+### Example LDIF File (`user.ldif`):
+Create a file containing the LDAP user entry:
 
 ```ldif
 dn: uid=luis,ou=usuarios,dc=frijoli,dc=com
@@ -116,62 +109,53 @@ userPassword: admin123
 ```
 
 > [!NOTE]
->
-> - El atributo `mail` (`luis@frijoli.com`) es utilizado por Postfix para verificar la validez del destinatario.
-> - El atributo `mailbox` (`frijoli.com/luis`) determina la subcarpeta en `/home/vmail/` donde se guardará el correo.
+> - The `mail` attribute (`luis@frijoli.com`) is queried by Postfix for recipient address validation.
+> - The `mailbox` attribute (`frijoli.com/luis`) defines the target subdirectory inside the `/home/vmail/` storage folder.
 
-### Cargar el usuario en LDAP:
-
-Ejecuta la importación desde tu terminal host (apuntando al puerto `389` expuesto):
+### Import the entry to LDAP:
+Run the command from your host machine (pointing to the exposed port `389`):
 
 ```bash
-ldapadd -x -H ldap://localhost:389 -D "cn=admin,dc=frijoli,dc=com" -w admin123 -f usuario.ldif
+ldapadd -x -H ldap://localhost:389 -D "cn=admin,dc=frijoli,dc=com" -w admin123 -f user.ldif
 ```
 
 ---
 
-## Pruebas de Funcionamiento
+## Verification and Testing
 
-### 1. Probar entrega SMTP (Puerto 25)
-
-Puedes simular el envío de un correo de prueba conectándote por `nc` o `telnet` al contenedor SMTP:
+### 1. Test SMTP Delivery (Port 25)
+Simulate sending an email by connecting to the SMTP service via netcat:
 
 ```bash
 nc localhost 25
 ```
-
-_(Envía los siguientes comandos SMTP línea por línea)_
-
+*(Send the following SMTP command sequence line by line)*
 ```smtp
 EHLO localhost
-MAIL FROM: <remitente@externo.com>
+MAIL FROM: <sender@external.com>
 RCPT TO: <luis@frijoli.com>
 DATA
-Subject: Correo de prueba PDC
+Subject: SMTP Integration Test
 
-Hola Luis, esta es una prueba de integracion SMTP -> LMTP -> Maildir.
+Hello Luis, this email confirms a successful SMTP -> LMTP -> Maildir delivery flow.
 .
 QUIT
 ```
 
-### 2. Verificar la entrega en disco
-
-Si la entrega fue exitosa, el correo debe haberse guardado bajo la ruta compartida en la estructura Maildir:
+### 2. Verify Delivery on the Filesystem
+Inspect the shared mailbox directory to ensure the email file was successfully written:
 
 ```bash
 sudo ls -R /home/vmail/frijoli.com/luis/new/
 ```
 
-### 3. Probar Acceso IMAP (Puerto 143)
-
-Verifica que el usuario se puede autenticar e inspeccionar su buzón conectándote a Dovecot:
+### 3. Test IMAP Authentication and Fetching (Port 143)
+Verify that the mailbox can be read using Dovecot IMAP:
 
 ```bash
 nc localhost 143
 ```
-
-_(Ingresa los comandos IMAP)_
-
+*(Authenticate and fetch the message)*
 ```imap
 . LOGIN luis admin123
 . SELECT INBOX
@@ -181,27 +165,27 @@ _(Ingresa los comandos IMAP)_
 
 ---
 
-## Estructura de Archivos del Proyecto
+## Directory Structure
 
 ```text
-├── docker-compose.yaml        # Orquestación de contenedores y mapeo de puertos/volúmenes.
+├── docker-compose.yaml        # Docker Compose service definition
 ├── ldap/
-│   ├── Dockerfile             # Construcción del servidor OpenLDAP con courier.schema.
-│   └── entrypoint.sh          # Inyector dinámico de esquemas slapd y arranque.
+│   ├── Dockerfile             # OpenLDAP image build instructions
+│   └── entrypoint.sh          # Dynamic schema compiler and slapd entrypoint
 ├── smtp/
-│   ├── Dockerfile             # Construcción de Postfix con postfix-ldap.
-│   ├── main.cf                # Configuración principal (LMTP virtual_transport).
-│   ├── master.cf              # Definición de procesos y bypass de chroots.
-│   ├── ldapmaps.cf            # Mapeo de buzón virtual usando LDAP.
-│   └── vdomains.txt           # Dominios virtuales autorizados.
+│   ├── Dockerfile             # Postfix build instructions
+│   ├── main.cf                # Postfix configuration (LMTP delivery, LDAP mapping)
+│   ├── master.cf              # Service definition and chroot bypass configurations
+│   ├── ldapmaps.cf            # LDAP query properties for virtual mailbox resolution
+│   └── vdomains.txt           # Authorized virtual domains list
 └── imap/
-    ├── Dockerfile             # Construcción de Dovecot (IMAP + LMTP).
-    ├── dovecot.conf           # Punto de entrada de configuración.
-    ├── dovecot-ldap.conf.ext  # Filtros de búsqueda y mapeo de atributos LDAP.
-    └── conf.d/                # Configuraciones modulares de Dovecot:
-        ├── 10-auth.conf       # Habilitación de métodos de autenticación.
-        ├── auth-ldap.conf.ext # Declaración de bases de datos passdb/userdb.
-        ├── 10-logging.conf    # Configuración de logs.
-        ├── 10-mail.conf       # Configuración de buzones y permisos vmail (1005).
-        └── 10-master.conf     # Listeners de red (IMAP puerto 143, LMTP puerto 24).
+    ├── Dockerfile             # Dovecot build instructions
+    ├── dovecot.conf           # Main configuration file entrypoint
+    ├── dovecot-ldap.conf.ext  # LDAP database authentication and mapping rules
+    └── conf.d/                # Modular Dovecot settings:
+        ├── 10-auth.conf       # Authentication protocols configuration
+        ├── auth-ldap.conf.ext # LDAP driver declaration for passdb and userdb
+        ├── 10-logging.conf    # Internal logging properties
+        ├── 10-mail.conf       # Mailbox location and system user configurations
+        └── 10-master.conf     # Service listeners (IMAP port 143, LMTP port 24)
 ```
