@@ -1,0 +1,44 @@
+services:
+  ldap:
+    build:
+      context: ./ldap
+      dockerfile: Dockerfile
+    container_name: ldap_server
+    ports:
+      - "389:389"
+    restart: unless-stopped
+    volumes:
+      - ./ldap/data:/var/lib/ldap
+      - ./ldap/config:/etc/ldap/slapd.d
+    networks:
+      - mail_network
+
+  smtp:
+    build:
+      context: ./smtp
+      dockerfile: Dockerfile
+    container_name: smtp_server
+    ports:
+      - "25:25"
+    depends_on:
+      - ldap
+    restart: unless-stopped
+    networks:
+      - mail_network
+
+  imap:
+    build:
+      context: ./imap
+      dockerfile: Dockerfile
+    container_name: imap_server
+    ports:
+      - "143:143"
+    depends_on:
+      - ldap
+    restart: unless-stopped
+    networks:
+      - mail_network
+
+networks:
+  mail_network:
+    driver: bridge

@@ -1,0 +1,56 @@
+# Authentication for LDAP users. Included from auth.conf.
+#
+# <https://doc.dovecot.org/latest/core/config/auth/databases/ldap.html>
+
+## See <https://doc.dovecot.org/latest/core/config/dict.html#ldap>
+ 
+#ldap_uris = ldap://ldap_server
+#ldap_auth_dn = cn=admin,dc=frijoli,dc=com 
+#ldap_auth_dn_password = admin123
+#ldap_base= ou=usuarios,dc=frijoli,dc=com
+#passdb ldap {
+#  ldap_filter = (&(objectClass=posixAccount)(uid=%{user}))
+#  ldap_bind = no
+
+#  fields {
+    # user=%{ldap:uid}
+    # password=%{ldap:userPassword}
+    # userdb_home=%{ldap:homeDirectory}
+    # userdb_uid=%{ldap:uidNumber}
+    # userdb_gid=%{ldap:gidNumber}
+#  }
+#}
+
+passdb {
+  driver = ldap
+  args = /etc/dovecot/dovecot-ldap.conf.ext
+}
+
+# "prefetch" user database means that the passdb already provided the
+# needed information and there's no need to do a separate userdb lookup.
+# <https://doc.dovecot.org/latest/core/config/auth/databases/prefetch.html>
+#userdb prefetch {
+#}
+
+#userdb ldap {
+#  ldap_filter = (&(objectClass=posixAccount)(uid=%{user}))
+
+# Default fields can be used to specify defaults that LDAP may override
+#  fields {
+#    home=/home/virtual/%{user}
+#  }
+#}
+
+userdb {
+  driver = ldap
+  args = /etc/dovecot/dovecot-ldap.conf.ext
+}
+
+# If you don't have any user-specific settings, you can avoid the userdb LDAP
+# lookup by using userdb static instead of userdb ldap, for example:
+# <https://doc.dovecot.org/latest/core/config/auth/databases/static.html>
+userdb {
+  driver = static
+  args = uid=1005 gid=1005 home=/home/vmail/%u
+}
+

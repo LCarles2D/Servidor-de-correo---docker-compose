@@ -1,0 +1,9 @@
+hosts = ldap
+dn = cn=admin,dc=frijoli,dc=com
+dnpass = admin123
+base = ou=usuarios,dc=frijoli,dc=com
+ldap_version = 3
+auth_bind = yes
+pass_filter = (&(objectClass=CourierMailAccount)(|(mail=%{user})(uid=%{user})))
+user_filter = (&(objectClass=CourierMailAccount)(|(mail=%{user})(uid=%{user})))
+user_attrs = homeDirectory=home, uidNumber=uid, gidNumber=gid, mailbox=mail=maildir:/home/vmail/%$

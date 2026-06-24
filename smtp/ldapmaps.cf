@@ -1,0 +1,7 @@
+server_host = ldap_server
+search_base = ou=usuarios,dc=frijoli,dc=com
+bind=no
+timeout=5
+query_filter = (mail=%s)
+result_attribute = mailbox
+result_format = %s/

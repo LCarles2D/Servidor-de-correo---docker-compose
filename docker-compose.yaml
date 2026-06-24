@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  ldap:
+    image: lcarles2d/openldap:pdc # 👈 Ya no compila, la baja de tu Registry
+    container_name: ldap_server
+    ports:
+      - "389:389"
+    restart: unless-stopped
+    volumes:
+      - ./ldap/data:/var/lib/ldap
+      - ./ldap/config:/etc/ldap/slapd.d
+    networks:
+      - mail_network
+
+  smtp:
+    image: lcarles2d/postfix:pdc  # 👈 La baja de tu Registry
+    container_name: smtp_server
+    ports:
+      - "25:25"
+    depends_on:
+      - ldap
+    restart: unless-stopped
+    volumes:
+      - /home/vmail:/home/vmail
+    networks:
+      - mail_network
+
+  imap:
+    image: lcarles2d/dovecot:pdc   # 👈 La baja de tu Registry
+    container_name: imap_server
+    ports:
+      - "143:143"
+    depends_on:
+      - ldap
+    restart: unless-stopped
+    volumes:
+      - /home/vmail:/home/vmail
+    networks:
+      - mail_network
+
+networks:
+  mail_network:
+    driver: bridge
