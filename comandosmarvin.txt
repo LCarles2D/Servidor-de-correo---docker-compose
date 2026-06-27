@@ -1,0 +1,8 @@
+sudo mkdir -p /run/systemd/resolve
+
+# 2. Crear el archivo físicamente e inyectarle el DNS de Google
+echo nameserver 8.8.8.8 | sudo tee /run/systemd/resolve/resolv.conf > /dev/null
+
+# 3. Reiniciar los motores para que lean el nuevo archivo real
+sudo systemctl restart containerd
+sudo systemctl restart kubelet

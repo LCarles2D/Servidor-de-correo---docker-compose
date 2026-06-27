@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   ldap:
-    image: lcarles2d/openldap:pdc # 👈 Ya no compila, la baja de tu Registry
+    image: lcarles2d/openldap:pdc 
     container_name: ldap_server
     ports:
       - "389:389"
@@ -14,7 +14,7 @@ services:
       - mail_network
 
   smtp:
-    image: lcarles2d/postfix:pdc  # 👈 La baja de tu Registry
+    image: lcarles2d/postfix:pdc  
     container_name: smtp_server
     ports:
       - "25:25"
@@ -27,7 +27,7 @@ services:
       - mail_network
 
   imap:
-    image: lcarles2d/dovecot:pdc   # 👈 La baja de tu Registry
+    image: lcarles2d/dovecot:pdc 
     container_name: imap_server
     ports:
       - "143:143"

@@ -1,0 +1,1 @@
+kubeadm join 10.156.23.132:6443 --token 8iryoz.0gqwl01lkkurprs5 	--discovery-token-ca-cert-hash sha256:1f4fc8b52a85affd0eb9e4eb192a5f3bbedc7b556937fbcdc0ffc881743f2cbd 

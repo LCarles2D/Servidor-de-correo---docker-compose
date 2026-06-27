@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: nfs-mail-pv
+spec:
+  capacity:
+    storage: 1Gi
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: nfs-manual
+  nfs:
+    path: /home/vmail/shared
+    server: 10.156.23.132
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nfs-mail-pvc
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: nfs-manual
+  resources:
+    requests:
+      storage: 1Gi

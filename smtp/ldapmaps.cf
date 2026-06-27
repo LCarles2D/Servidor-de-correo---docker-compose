@@ -1,4 +1,4 @@
-server_host = ldap_server
+server_host = ldap
 search_base = ou=usuarios,dc=frijoli,dc=com
 bind=no
 timeout=5

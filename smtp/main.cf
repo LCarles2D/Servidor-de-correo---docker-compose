@@ -16,7 +16,7 @@ smtpd_banner = $myhostname ESMTP $mail_name (Debian)
 
 # IP protocols to use: ipv4, ipv6, or all
 # (set this explicitly so `post-install upgrade-configuration' wont complain)
-inet_protocols = all
+inet_protocols =ipv4
 
 # List of "trusted" SMTP clients (maptype:mapname allowed) that have more
 # privileges than "strangers".  If mynetworks is not specified (the default),
@@ -91,5 +91,4 @@ inet_interfaces = all
 virtual_mailbox_domains = /etc/postfix/vdomains.txt
 virtual_mailbox_base = /home/vmail
 virtual_mailbox_maps = proxy:ldap:/etc/postfix/ldapmaps.cf   
-virtual_mailbox_maildir_delim = /
-virtual_transport = lmtp:inet:imap:24
+virtual_transport = lmtp:inet:imap.default.svc.cluster.local:24

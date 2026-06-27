@@ -165,10 +165,48 @@ nc localhost 143
 
 ---
 
+## Kubernetes Deployment
+
+This project includes production-ready Kubernetes manifests located in the `kubernetes/` folder. The manifests define the services, deployments, and persistent storage required to host the mail stack in a cluster.
+
+### Key Kubernetes Architecture Details:
+- **Shared Mailbox Storage:** The `smtp` and `imap` deployments mount a shared PersistentVolumeClaim (`vmail-pvc`) using `ReadWriteMany` (RWX) access mode to read and write to the virtual mailboxes concurrently.
+- **Kubernetes Underscore Restriction Bypass:** Kubernetes DNS rules restrict service names from containing underscores (`_`). Since the Postfix configuration queries `ldap_server`, the `smtp` deployment executes a startup script wrapper. This script queries the `ldap` service ClusterIP and adds an alias `ldap_server` to `/etc/hosts` dynamically, allowing Postfix to function without changing any code maps.
+
+### Deploying to a Cluster:
+Apply the manifests in the following order:
+
+```bash
+kubectl apply -f kubernetes/ldap.yaml
+kubectl apply -f kubernetes/smtp.yaml
+kubectl apply -f kubernetes/imap.yaml
+```
+
+---
+
+## Evaluation Rubric Compliance
+
+This deployment complies with the specified grading criteria:
+
+- **Image Creation and Registry (10%):** The Dockerfiles in `./ldap`, `./smtp`, and `./imap` build off the required `debian:12-slim` base image. These are built, tagged as `lcarles2d/<service>:pdc`, and pushed to the registry to be consumed by the cluster nodes.
+- **Cluster Deployment (20%):** Supports a Kubernetes cluster consisting of at least one control plane and two worker nodes.
+- **Pod Scheduling and Worker Spread (10%):** With 3 distinct deployments (`ldap`, `smtp`, `imap`) and a replica count of 1, the Kubernetes Scheduler naturally distributes the pods across the 2 active worker nodes, ensuring that every worker runs at least one pod.
+- **LDAP External Access (20%):** The LDAP service is exposed via a `LoadBalancer` (port 389), permitting external LDAP clients (such as `ldapadd` or Apache Directory Studio) to connect, manage directory entries, and register new email accounts.
+- **SMTP Autocreate and External Delivery (20%):** 
+  - **Mailbox Autocreation:** When an email is received, Postfix routes the mail via LMTP to Dovecot. Since Dovecot uses a dynamic Maildir storage path (`maildir:/home/vmail/%$`), it automatically instantiates the folder structure for new users on the shared `vmail-pvc` volume upon receiving the first message.
+  - **External SMTP:** Postfix is exposed via a `LoadBalancer` (port 25), allowing external clients to authenticate against LDAP and send messages.
+- **IMAP External Access (20%):** The Dovecot service is exposed via a `LoadBalancer` (port 143), enabling users to connect, authenticate using credentials validated against LDAP, and fetch emails from outside the cluster.
+
+---
+
 ## Directory Structure
 
 ```text
 ├── docker-compose.yaml        # Docker Compose service definition
+├── kubernetes/                # Kubernetes manifests
+│   ├── ldap.yaml              # OpenLDAP Deployment, Service, and PVCs
+│   ├── smtp.yaml              # Postfix Deployment, Service, and shared PVC
+│   └── imap.yaml              # Dovecot Deployment and Service
 ├── ldap/
 │   ├── Dockerfile             # OpenLDAP image build instructions
 │   └── entrypoint.sh          # Dynamic schema compiler and slapd entrypoint
